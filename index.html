@@ -701,7 +701,27 @@
     </div>
   </div>
 
-  <!-- CATEGORIAS -->
+  <!-- RESUMO RÁPIDO -->
+  <div id="quick-summary" style="display:none">
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px">
+      <div class="summary-card">
+        <div class="label">Maior Gasto</div>
+        <div style="font-size:16px;font-weight:700;color:var(--green);margin-top:8px" id="biggest-expense">—</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Categoria Top</div>
+        <div style="font-size:16px;font-weight:700;color:var(--green);margin-top:8px" id="top-category">—</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Média Diária</div>
+        <div style="font-size:16px;font-weight:700;color:var(--green);margin-top:8px" id="daily-average">—</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Ciclo Anterior</div>
+        <div style="font-size:16px;font-weight:700;color:var(--green);margin-top:8px" id="previous-cycle">—</div>
+      </div>
+    </div>
+  </div>
   <div class="categories-card" id="cat-section" style="display:none">
     <div class="card-title">Gastos por categoria</div>
     <div class="cat-bar-wrap" id="cat-bar"></div>
@@ -763,7 +783,27 @@
       </div>
     </div>
 
-    <div class="btn-add" onclick="addTransaction()">Adicionar</div>
+    <div style="display:flex;gap:12px;margin-top:12px">
+      <label style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text);font-weight:500">
+        <input type="checkbox" id="recurring" style="cursor:pointer;width:18px;height:18px">
+        Recorrente
+      </label>
+      <label style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text);font-weight:500" id="installments-label">
+        <input type="checkbox" id="installments-check" style="cursor:pointer;width:18px;height:18px" onchange="toggleInstallments()">
+        Parcelado
+      </label>
+    </div>
+
+    <div id="installments-field" style="display:none;margin-top:12px">
+      <label>Quantas parcelas?</label>
+      <input type="number" id="installments-count" placeholder="2" min="2" max="12" />
+    </div>
+
+    <button class="btn-add" onclick="addTransaction()">Adicionar</button>
+
+  <!-- BUSCA -->
+  <div class="form-card">
+    <input type="text" id="search-input" placeholder="🔍 Buscar lançamento..." style="width:100%" onkeyup="filterTransactions()" />
   </div>
 
   <!-- LISTA -->
@@ -1017,16 +1057,25 @@ function updateCycleLabel() {
 }
 
 // ── Tipo ──────────────────────────────────────────────────
+function toggleInstallments() {
+  const checked = document.getElementById('installments-check').checked;
+  document.getElementById('installments-field').style.display = checked ? '' : 'none';
+}
+
 function setType(type) {
   txType = type;
   const be = document.getElementById('btn-expense');
   const bi = document.getElementById('btn-income');
   const cg = document.getElementById('cat-group');
   const sg = document.getElementById('src-group');
+  const ig = document.getElementById('installments-label');
   be.className = 'type-btn' + (type === 'expense' ? ' active-expense' : '');
   bi.className = 'type-btn' + (type === 'income'  ? ' active-income'  : '');
   cg.style.display = type === 'expense' ? '' : 'none';
   sg.style.display = type === 'income'  ? '' : 'none';
+  ig.style.display = type === 'expense' ? '' : 'none';
+  document.getElementById('installments-check').checked = false;
+  toggleInstallments();
 }
 
 // ── Adicionar ─────────────────────────────────────────────
@@ -1038,35 +1087,73 @@ function addTransaction() {
   const cat    = txType === 'expense'
     ? document.getElementById('category').value
     : document.getElementById('source').value;
+  const recurring = document.getElementById('recurring').checked;
+  const isInstallment = document.getElementById('installments-check').checked;
+  const installments = isInstallment ? parseInt(document.getElementById('installments-count').value) : 1;
 
   if (!desc) return shake('desc');
   if (!amount || amount <= 0) return shake('amount');
   if (!dateStr) return shake('date');
+  if (isInstallment && (!installments || installments < 2)) return shake('installments-count');
 
   const date = new Date(dateStr + 'T00:00:00');
   const day = date.getDate();
 
   const list = loadTransactions();
-  list.push({ 
-    id: Date.now(), 
-    type: txType, 
-    desc, 
-    amount, 
-    day,
-    date: dateStr,
-    time: timeStr || '00:00',
-    cat 
-  });
+  const baseId = Date.now();
+
+  if (isInstallment) {
+    // Adicionar parcelas
+    const monthlyAmount = amount / installments;
+    let currentDate = new Date(date);
+    
+    for (let i = 0; i < installments; i++) {
+      const installmentDate = new Date(currentDate);
+      installmentDate.setMonth(installmentDate.getMonth() + i);
+      
+      list.push({ 
+        id: baseId + i,
+        type: txType, 
+        desc: `${desc} (${i + 1}/${installments})`, 
+        amount: monthlyAmount, 
+        day: installmentDate.getDate(),
+        date: installmentDate.toISOString().split('T')[0],
+        time: timeStr || '00:00',
+        cat,
+        recurring: false,
+        installment: true,
+        installmentTotal: installments,
+        installmentNum: i + 1
+      });
+    }
+  } else {
+    list.push({ 
+      id: baseId, 
+      type: txType, 
+      desc, 
+      amount, 
+      day,
+      date: dateStr,
+      time: timeStr || '00:00',
+      cat,
+      recurring,
+      installment: false
+    });
+  }
+
   list.sort((a, b) => new Date(b.date) - new Date(a.date));
   saveTransactions(list);
 
   document.getElementById('desc').value = '';
   document.getElementById('amount').value = '';
-  document.getElementById('date').value = '';
-  document.getElementById('time').value = '';
+  document.getElementById('date').value = today.toISOString().split('T')[0];
+  document.getElementById('time').value = timeStr;
+  document.getElementById('recurring').checked = false;
+  document.getElementById('installments-check').checked = false;
+  toggleInstallments();
 
   render();
-  showToast(txType === 'expense' ? 'Gasto registrado ✓' : 'Entrada registrada ✓');
+  showToast(isInstallment ? `${installments} parcelas adicionadas ✓` : (txType === 'expense' ? 'Gasto registrado ✓' : 'Entrada registrada ✓'));
 }
 
 function shake(id) {
@@ -1074,6 +1161,63 @@ function shake(id) {
   el.style.borderColor = 'var(--red)';
   setTimeout(() => el.style.borderColor = '', 1200);
   el.focus();
+}
+
+// ── Filtro ────────────────────────────────────────────────
+function filterTransactions() {
+  const query = document.getElementById('search-input').value.toLowerCase();
+  const txs = document.querySelectorAll('.transaction');
+  txs.forEach(tx => {
+    const text = tx.textContent.toLowerCase();
+    tx.style.display = text.includes(query) ? '' : 'none';
+  });
+}
+
+// ── Resumo Rápido ──────────────────────────────────────────
+function updateQuickSummary(cycleTransactions) {
+  if (!cycleTransactions.length) {
+    document.getElementById('quick-summary').style.display = 'none';
+    return;
+  }
+
+  const expenses = cycleTransactions.filter(t => t.type === 'expense');
+  if (!expenses.length) {
+    document.getElementById('quick-summary').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('quick-summary').style.display = '';
+
+  // Maior gasto
+  const biggest = expenses.reduce((max, t) => t.amount > max.amount ? t : max);
+  document.getElementById('biggest-expense').textContent = fmt(biggest.amount);
+
+  // Categoria com maior gasto
+  const cats = {};
+  expenses.forEach(t => cats[t.cat] = (cats[t.cat] || 0) + t.amount);
+  const topCat = Object.entries(cats).reduce((max, [cat, amt]) => amt > max[1] ? [cat, amt] : max, ['—', 0]);
+  document.getElementById('top-category').textContent = topCat[0];
+
+  // Média diária
+  const range = getCycleRange(cycleStartDate);
+  const daysInCycle = Math.ceil((range.end - range.start) / (24 * 60 * 60 * 1000));
+  const totalExpense = expenses.reduce((s, t) => s + t.amount, 0);
+  const avgDaily = totalExpense / daysInCycle;
+  document.getElementById('daily-average').textContent = fmt(avgDaily);
+
+  // Ciclo anterior
+  const prevCycleDate = new Date(cycleStartDate);
+  prevCycleDate.setMonth(prevCycleDate.getMonth() - 1);
+  const prevRange = getCycleRange(prevCycleDate);
+  
+  const allList = loadTransactions();
+  const prevCycleTransactions = allList.filter(t => {
+    const txDate = new Date(t.date);
+    return t.type === 'expense' && txDate >= prevRange.start && txDate <= prevRange.end;
+  });
+  
+  const prevTotal = prevCycleTransactions.reduce((s, t) => s + t.amount, 0);
+  document.getElementById('previous-cycle').textContent = fmt(prevTotal);
 }
 
 // ── Deletar ───────────────────────────────────────────────
@@ -1109,6 +1253,9 @@ function render() {
   const balEl = document.getElementById('total-balance');
   balEl.textContent = fmt(Math.abs(balance));
   balEl.className = 'value ' + (balance >= 0 ? 'balance-pos' : 'balance-neg');
+
+  // Atualizar resumo rápido
+  updateQuickSummary(cycleTransactions);
 
   // Vencimento (total de gastos = quanto vai pagar no cartão)
   document.getElementById('due-amount').textContent = fmt(expense);
@@ -1166,17 +1313,22 @@ function render() {
     const icon  = CAT_ICONS[t.cat]  || '📦';
     const dateObj = new Date(t.date);
     const dayNum = dateObj.getDate();
+    const installLabel = t.installment ? ` [${t.installmentNum}/${t.installmentTotal}]` : '';
+    const recurringLabel = t.recurring ? ' 🔄' : '';
     return `
     <div class="transaction">
       <div class="tx-icon" style="background:${color}22;color:${color}">${icon}</div>
       <div class="tx-info">
-        <div class="tx-desc">${t.desc}</div>
+        <div class="tx-desc">${t.desc}${installLabel}${recurringLabel}</div>
         <div class="tx-meta">Dia ${dayNum} · ${t.time} · ${t.cat}</div>
       </div>
       <div class="tx-amount ${t.type}">${t.type === 'expense' ? '−' : '+'}${fmt(t.amount)}</div>
       <button class="tx-delete" onclick="deleteTransaction(${t.id})" title="Excluir">✕</button>
     </div>`;
   }).join('');
+  
+  // Limpar busca
+  document.getElementById('search-input').value = '';
 }
 
 // ── Toast ─────────────────────────────────────────────────
