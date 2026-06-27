@@ -278,56 +278,21 @@
   header {
     max-width: 760px;
     margin: 0 auto 32px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
+    text-align: center;
   }
 
   .logo {
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--green);
   }
 
-  .month-nav {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 8px 14px;
-  }
-
-  .month-nav button {
-    background: none;
-    border: none;
+  .cycle-badge {
+    font-size: 12px;
     color: var(--muted);
-    cursor: pointer;
-    font-size: 16px;
-    line-height: 1;
-    padding: 2px 4px;
-    transition: color 0.15s;
-  }
-
-  .month-nav button:hover { color: var(--text); }
-
-  #month-label {
-    font-size: 14px;
-    font-weight: 600;
-    min-width: 200px;
-    text-align: center;
-  }
-
-  .cycle-info {
-    font-size: 11px;
-    color: var(--muted);
-    text-align: center;
-    margin-top: 4px;
+    margin-top: 8px;
   }
 
   .main {
@@ -486,6 +451,16 @@
 
   input:focus, select:focus { border-color: var(--green); }
   select option { background: var(--surface2); }
+
+  /* Customizar input type="date" */
+  input[type="date"] {
+    cursor: pointer;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(0.7);
+  }
 
   .type-toggle {
     display: flex;
@@ -696,14 +671,7 @@
 <!-- MAIN APP -->
 <div id="main-app"><header>
   <div class="logo">Finanças</div>
-  <div class="month-nav">
-    <button onclick="changeCycle(-1)">&#8592;</button>
-    <div style="flex:1">
-      <div id="month-label"></div>
-      <div class="cycle-info" id="cycle-info"></div>
-    </div>
-    <button onclick="changeCycle(1)">&#8594;</button>
-  </div>
+  <div class="cycle-badge" id="cycle-badge"></div>
 </header>
 
 <div class="main">
@@ -758,12 +726,16 @@
         <input type="text" id="desc" placeholder="Ex: Supermercado, Salário…" />
       </div>
       <div class="form-group">
-        <label>Valor (R$)</label>
-        <input type="number" id="amount" placeholder="0,00" min="0" step="0.01" />
+        <label>Data</label>
+        <input type="date" id="date" />
       </div>
       <div class="form-group">
-        <label>Dia</label>
-        <input type="number" id="day" placeholder="Dia" min="1" max="31" />
+        <label>Hora</label>
+        <input type="time" id="time" />
+      </div>
+      <div class="form-group">
+        <label>Valor (R$)</label>
+        <input type="number" id="amount" placeholder="0,00" min="0" step="0.01" />
       </div>
       <div class="form-group" id="cat-group">
         <label>Categoria</label>
@@ -1040,31 +1012,8 @@ function updateCycleLabel() {
   const endDay = range.end.getDate();
   const year = range.start.getFullYear();
   
-  document.getElementById('month-label').textContent = 
-    `${startDay} ${startMonth} — ${endDay} ${endMonth} ${year}`;
-  
-  // Data de vencimento
-  let dueDate = new Date(range.end.getFullYear(), range.end.getMonth(), DUE_DAY);
-  if (dueDate < range.end) {
-    dueDate = new Date(range.end.getFullYear(), range.end.getMonth() + 1, DUE_DAY);
-  }
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const daysUntilDue = Math.ceil((dueDate - today) / (24 * 60 * 60 * 1000));
-  
-  let dueText = '';
-  if (daysUntilDue < 0) {
-    dueText = 'Vencido há ' + Math.abs(daysUntilDue) + 'd';
-  } else if (daysUntilDue === 0) {
-    dueText = 'Vence hoje';
-  } else if (daysUntilDue === 1) {
-    dueText = 'Vence amanhã';
-  } else {
-    dueText = 'Vence em ' + daysUntilDue + 'd';
-  }
-  
-  document.getElementById('cycle-info').textContent = dueText;
+  document.getElementById('cycle-badge').textContent = 
+    `Ciclo: ${startDay} ${startMonth} — ${endDay} ${endMonth} ${year}`;
 }
 
 // ── Tipo ──────────────────────────────────────────────────
@@ -1084,23 +1033,37 @@ function setType(type) {
 function addTransaction() {
   const desc   = document.getElementById('desc').value.trim();
   const amount = parseFloat(document.getElementById('amount').value);
-  const day    = parseInt(document.getElementById('day').value);
+  const dateStr = document.getElementById('date').value;
+  const timeStr = document.getElementById('time').value;
   const cat    = txType === 'expense'
     ? document.getElementById('category').value
     : document.getElementById('source').value;
 
   if (!desc) return shake('desc');
   if (!amount || amount <= 0) return shake('amount');
-  if (!day || day < 1 || day > 31) return shake('day');
+  if (!dateStr) return shake('date');
+
+  const date = new Date(dateStr + 'T00:00:00');
+  const day = date.getDate();
 
   const list = loadTransactions();
-  list.push({ id: Date.now(), type: txType, desc, amount, day, cat });
-  list.sort((a, b) => b.day - a.day);
+  list.push({ 
+    id: Date.now(), 
+    type: txType, 
+    desc, 
+    amount, 
+    day,
+    date: dateStr,
+    time: timeStr || '00:00',
+    cat 
+  });
+  list.sort((a, b) => new Date(b.date) - new Date(a.date));
   saveTransactions(list);
 
   document.getElementById('desc').value = '';
   document.getElementById('amount').value = '';
-  document.getElementById('day').value = '';
+  document.getElementById('date').value = '';
+  document.getElementById('time').value = '';
 
   render();
   showToast(txType === 'expense' ? 'Gasto registrado ✓' : 'Entrada registrada ✓');
@@ -1133,7 +1096,7 @@ function render() {
   
   // Filtrar apenas gastos dentro do ciclo
   const cycleTransactions = list.filter(t => {
-    const txDate = new Date(range.start.getFullYear(), range.start.getMonth(), t.day);
+    const txDate = new Date(t.date);
     return txDate >= range.start && txDate <= range.end;
   });
 
@@ -1186,7 +1149,7 @@ function render() {
     catSec.style.display = 'none';
   }
 
-  // Lista de transações (todas, não filtradas por ciclo, pra ver histórico)
+  // Lista de transações
   const txList = document.getElementById('tx-list');
   const count  = document.getElementById('tx-count');
 
@@ -1196,17 +1159,19 @@ function render() {
     return;
   }
 
-  count.textContent = `${cycleTransactions.length} no ciclo, ${list.length} total`;
+  count.textContent = `${cycleTransactions.length} no ciclo`;
 
   txList.innerHTML = cycleTransactions.map(t => {
     const color = CAT_COLORS[t.cat] || '#9ca3af';
     const icon  = CAT_ICONS[t.cat]  || '📦';
+    const dateObj = new Date(t.date);
+    const dayNum = dateObj.getDate();
     return `
     <div class="transaction">
       <div class="tx-icon" style="background:${color}22;color:${color}">${icon}</div>
       <div class="tx-info">
         <div class="tx-desc">${t.desc}</div>
-        <div class="tx-meta">Dia ${t.day} · ${t.cat}</div>
+        <div class="tx-meta">Dia ${dayNum} · ${t.time} · ${t.cat}</div>
       </div>
       <div class="tx-amount ${t.type}">${t.type === 'expense' ? '−' : '+'}${fmt(t.amount)}</div>
       <button class="tx-delete" onclick="deleteTransaction(${t.id})" title="Excluir">✕</button>
@@ -1223,7 +1188,11 @@ function showToast(msg) {
 }
 
 // ── Iniciar ───────────────────────────────────────────────
-document.getElementById('day').value = now.getDate();
+const today = new Date();
+const dateStr = today.toISOString().split('T')[0];
+const timeStr = today.toTimeString().split(' ')[0].substring(0, 5);
+document.getElementById('date').value = dateStr;
+document.getElementById('time').value = timeStr;
 setType('expense');
 render();
 </script>
